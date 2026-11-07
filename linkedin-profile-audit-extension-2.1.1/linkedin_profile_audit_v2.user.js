@@ -413,7 +413,7 @@
     data.snapshots ||= [];
     data.snapshots.push(snapshot);
     data.snapshots=data.snapshots.slice(-50);
-    data.meta = {schema_version:'4.7', artifact_type:'linkedin_profile_audit_logger', profile_url:`https://www.linkedin.com/in/${PROFILE}/`, locales:contractLocales, updater_version:'4.11.0', shared_content_primary_locale:sharedContentPrimaryLocale, shared_content_operation_ids:[...sharedContentOperationIds]};
+    data.meta = {schema_version:'4.7', artifact_type:'linkedin_profile_audit_logger', profile_url:`https://www.linkedin.com/in/${PROFILE}/`, locales:contractLocales, updater_version:'4.12.0', shared_content_primary_locale:sharedContentPrimaryLocale, shared_content_operation_ids:[...sharedContentOperationIds]};
     save(data); return data;
   }
   async function download(data) {

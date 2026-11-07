@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resume Contract Studio — 配對</title>
+<style>body{font:14px system-ui,sans-serif;min-width:300px;margin:16px;line-height:1.5;color:#24292f}h1{font-size:16px;margin:0 0 12px}label{display:block;margin:12px 0 4px}input{box-sizing:border-box;width:100%;padding:8px;font:13px monospace}button{background:#0a66c2;color:white;border:0;border-radius:4px;padding:9px 14px;margin-top:10px;cursor:pointer}button:disabled{opacity:.5}#status{overflow-wrap:anywhere;margin-top:12px}small{display:block;margin-top:12px;color:#57606a}</style></head>
+<body><h1>履歷契約工作台 — Bridge 配對</h1>
+<p>在 MCP Client 呼叫 <code>begin_bridge_pairing</code>，再將回傳的一次性代碼貼到下方（120 秒內有效）。</p>
+<form id="pairForm"><label for="pairingCode">一次性配對代碼</label><input id="pairingCode" type="text" autocomplete="off" spellcheck="false" required><button id="pairButton" type="submit">配對 Bridge</button></form>
+<p id="status" role="status" aria-live="polite">檢查連線中…</p>
+<small>Token 僅儲存於瀏覽器擴充功能 Session；MCP 服務重新啟動後需重新配對。不要分享配對代碼。</small>
+<script src="popup.js"></script></body></html>

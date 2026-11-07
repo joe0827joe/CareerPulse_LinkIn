@@ -1,7 +1,7 @@
 import http from 'node:http';
 import readline from 'node:readline';
 import {readFile,stat} from 'node:fs/promises';
-import {createHash} from 'node:crypto';
+import {createHash,randomBytes,timingSafeEqual} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {dirname,resolve} from 'node:path';
 
@@ -24,6 +24,27 @@ const waiters=new Map();
 // untrusted local machines.
 const EXTENSION_ORIGIN=/^chrome-extension:\/\/[a-p]{32}$/;
 const allowedExtensionId=process.env.LINKEDIN_RESUME_EXTENSION_ID || '';
+// Pairing is intentionally a user-confirmed, per-process session. No secret
+// appears in source, CLI arguments, the repository, or diagnostics.
+let pairingChallenge=null;
+let pairedExtension=null;
+const PAIRING_TTL_MS=120_000;
+function newPairingChallenge(){
+  pairingChallenge={code:randomBytes(18).toString('base64url'),expiresAt:Date.now()+PAIRING_TTL_MS,attempts:0};
+  pairedExtension=null; // requesting a new code explicitly revokes old access
+  lastSeen=null;
+  return {pairingCode:pairingChallenge.code,expiresInSeconds:PAIRING_TTL_MS/1000,
+    instructions:'Open the Resume Contract Studio extension popup and enter this one-time code. Do not share the code.'};
+}
+function matchesSecret(actual,expected){
+  if(typeof actual!=='string' || typeof expected!=='string')return false;
+  const a=Buffer.from(actual),b=Buffer.from(expected);
+  return a.length===b.length && timingSafeEqual(a,b);
+}
+function authenticatedExtensionRequest(req){
+  return pairedExtension && pairedExtension.origin===req.headers.origin
+    && matchesSecret(req.headers['x-bridge-token'],pairedExtension.token);
+}
 if (allowedExtensionId && !/^[a-p]{32}$/.test(allowedExtensionId)) {
   throw new Error('LINKEDIN_RESUME_EXTENSION_ID must be a 32-character Chrome extension ID');
 }
@@ -58,8 +79,26 @@ const bridge=http.createServer(async(req,res)=>{
   try {
     if(!authorizedExtensionRequest(req)) return sendHttp(req,res,403,{error:'extension origin not allowed'});
     if(req.method==='OPTIONS') return sendHttp(req,res,204,null,{
-      'Access-Control-Allow-Methods':'GET,POST,OPTIONS','Access-Control-Allow-Headers':'Content-Type',
+      'Access-Control-Allow-Methods':'GET,POST,OPTIONS','Access-Control-Allow-Headers':'Content-Type, X-Bridge-Token',
     });
+    if(req.method==='POST'&&req.url==='/pair'){
+      const attempt=await readBody(req);
+      if(!pairingChallenge || pairingChallenge.expiresAt<Date.now()){
+        pairingChallenge=null;
+        return sendHttp(req,res,403,{error:'pairing code expired or not requested'});
+      }
+      pairingChallenge.attempts++;
+      if(!matchesSecret(attempt?.pairingCode,pairingChallenge.code)){
+        if(pairingChallenge.attempts>=5)pairingChallenge=null;
+        return sendHttp(req,res,403,{error:'invalid pairing code'});
+      }
+      pairingChallenge=null;
+      const token=randomBytes(32).toString('base64url');
+      pairedExtension={origin:req.headers.origin,token};
+      lastSeen=null;
+      return sendHttp(req,res,200,{ok:true,token});
+    }
+    if(!authenticatedExtensionRequest(req))return sendHttp(req,res,401,{error:'extension not paired or invalid token'});
     if(req.method==='GET'&&req.url==='/health') return sendHttp(req,res,200,{ok:true,lastSeen,queued:queue.length});
     if(req.method==='GET'&&req.url==='/next'){
       lastSeen=new Date().toISOString();
@@ -170,7 +209,8 @@ async function contractStatus(){
 
 const tools=[
   {name:'set_resume_plan',description:'Bind a profile and submit or replace the complete agent-authored resume plan for this session. No workspace, Python or generated file is required. Start with empty operations to inspect the profile; then submit mapped create/replace operations based on visible forms. This does not save LinkedIn changes. Retain the plan in conversation for reconnects.',inputSchema:{type:'object',required:['contract'],properties:{contract:{type:'object',required:['profile','locales','operations'],properties:{profile:{type:'object',required:['public_profile_url'],properties:{public_profile_url:{type:'string'}}},locales:{type:'array',items:{type:'string'}},operations:{type:'array',items:{type:'object'}}}}},additionalProperties:false}},
-  {name:'bridge_status',description:'Check whether the companion Edge extension is polling the local bridge.',inputSchema:{type:'object',properties:{}}},
+  {name:'begin_bridge_pairing',description:'Generate a one-time two-minute pairing code for the companion browser extension popup. Revokes any previously paired browser session. Use force=true to cancel commands stranded by a disconnected extension.',inputSchema:{type:'object',properties:{force:{type:'boolean',description:'Cancel pending/active commands before rotating a stuck pairing'}},additionalProperties:false}},
+  {name:'bridge_status',description:'Check whether the companion Edge extension has paired and is polling the local bridge.',inputSchema:{type:'object',properties:{}}},
   {name:'workspace_status',description:'Report the configured resume workspace. A portable installation starts unconfigured; use configure_workspace before reading a contract or changing a profile.',inputSchema:{type:'object',properties:{},additionalProperties:false}},
   {name:'configure_workspace',description:'Set the local resume workspace for this MCP session. The folder must contain contracts/linkedin-profile-sync-contract.json and the generated extension profile-targets.json. This never contacts LinkedIn.',inputSchema:{type:'object',required:['workspacePath'],properties:{workspacePath:{type:'string',minLength:1}},additionalProperties:false}},
   {name:'contract_status',description:'Validate the local versioned data contract, generated extension targets, and UI-only restrictions before maintenance or a profile update.',inputSchema:{type:'object',properties:{},additionalProperties:false}},
@@ -182,13 +222,27 @@ const tools=[
 
 async function callTool(name,args={}){
   if(name==='set_resume_plan') { if(queue.length || inFlight.size || waiters.size) throw new Error('Finish pending commands before replacing the plan'); sessionContract=validateSessionContract(args.contract); return text({accepted:true,operations:sessionContract.operations.length,profile_url:sessionContract.profile.public_profile_url}); }
-  if(name==='bridge_status')return text({bridgeListening:true,lastExtensionPoll:lastSeen,connected:!!lastSeen&&Date.now()-Date.parse(lastSeen)<5000,queued:queue.length});
+  if(name==='begin_bridge_pairing'){
+    const pending=new Set([...queue.map(item=>item.id),...inFlight,...waiters.keys()]);
+    if(pending.size && args.force!==true) throw new Error('Pending commands exist. Finish them first or call begin_bridge_pairing with force=true to cancel them');
+    if(pending.size){
+      queue.length=0; inFlight.clear();
+      for(const id of pending){
+        const failed={id,ok:false,error:'command cancelled because bridge pairing was rotated'};
+        const waiter=waiters.get(id);
+        if(waiter){waiter(failed);waiters.delete(id);}else results.set(id,failed);
+      }
+    }
+    return text({...newPairingChallenge(),cancelledCommands:pending.size});
+  }
+  if(name==='bridge_status')return text({bridgeListening:true,paired:!!pairedExtension,extensionOrigin:pairedExtension?.origin||null,lastExtensionPoll:lastSeen,connected:!!lastSeen&&Date.now()-Date.parse(lastSeen)<5000,queued:queue.length});
   if(name==='workspace_status')return text({configured:!!workspace,workspace});
   if(name==='configure_workspace')return text(await configureWorkspace(args.workspacePath));
   if(name==='contract_status')return text(await contractStatus());
   if(name==='read_contract')return text(sessionContract || JSON.parse(await readFile(resolve(requireWorkspace(),'contracts','linkedin-profile-sync-contract.json'),'utf8')));
   if(name==='read_extension_targets')return text(sessionContract ? expectedExtensionTargets(sessionContract) : JSON.parse(await readFile(resolve(requireWorkspace(),'linkedin-profile-audit-extension-2.1.1','profile-targets.json'),'utf8')));
   if(name==='send_command'){
+    if(!pairedExtension) throw new Error('Bridge is not paired. Call begin_bridge_pairing and enter the code in the extension popup first');
     // Accept legacy nested arguments so an older caller cannot silently lose its target.
     const {action,args:legacyArgs,...commandArgs}=args;
     const normalized={...(legacyArgs && typeof legacyArgs==='object' ? legacyArgs : {}),...commandArgs};

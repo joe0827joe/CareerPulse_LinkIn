@@ -4,6 +4,22 @@ const BRIDGE='http://127.0.0.1:37841';
 let polling=false;
 let targetProfilePromise;
 
+// The bearer is kept in extension-only session storage. It is never injected
+// into LinkedIn content scripts, URLs, source code or diagnostic output.
+async function bridgeFetch(path,options={}) {
+  const {bridgeToken}=await chrome.storage.session.get('bridgeToken');
+  if(!bridgeToken) throw new Error('Bridge not paired: open the extension popup');
+  const response=await fetch(`${BRIDGE}${path}`,{
+    ...options,headers:{...options.headers,'X-Bridge-Token':bridgeToken},
+  });
+  if(response.status===401){
+    await chrome.storage.session.remove('bridgeToken');
+    throw new Error('Bridge pairing expired: enter a new pairing code in extension popup');
+  }
+  if(!response.ok && response.status!==204)throw new Error(`Bridge HTTP ${response.status}`);
+  return response;
+}
+
 async function targetProfile(targets) {
   if (targets) {
     const url=new URL(targets.profile_url);
@@ -23,7 +39,7 @@ async function targetProfile(targets) {
 }
 
 async function postResult(result) {
-  await fetch(`${BRIDGE}/result`, {
+  await bridgeFetch('/result', {
     method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(result)
   });
 }
@@ -72,7 +88,7 @@ async function pollBridge() {
   polling=true;
   let command=null;
   try {
-    const response=await fetch(`${BRIDGE}/next`, {cache:'no-store'});
+    const response=await bridgeFetch('/next', {cache:'no-store'});
     if (response.status === 204) return;
     command=await response.json();
     const tab=await findOrOpenProfileTab(command.args?.contractTargets);
@@ -111,6 +127,11 @@ chrome.runtime.onStartup.addListener(() => void pollBridge());
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   // MV3 workers can sleep between timers. The page sends a harmless heartbeat
   // while this approved profile is open so queued MCP commands wake the worker.
+  if (message?.type === 'bridgePaired' && _sender.id === chrome.runtime.id) {
+    void pollBridge();
+    sendResponse({ok:true});
+    return false;
+  }
   if (message?.type === 'bridgeHeartbeat') {
     void pollBridge();
     sendResponse({ok:true});
@@ -124,7 +145,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
   if (message?.type === 'bridgeResult') {
-    fetch(`${BRIDGE}/result`, {
+    bridgeFetch('/result', {
       method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(message.result)
     }).then(() => sendResponse({ok:true}))
       .catch(error => sendResponse({ok:false, error:String(error)}));

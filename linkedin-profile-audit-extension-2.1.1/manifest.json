@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "履歷契約工作台 · Resume Contract Studio",
-  "version": "4.11.0",
+  "version": "4.12.0",
   "description": "以可驗證的資料契約探索、套用及驗證 LinkedIn 履歷更新，並匯出結構化 Logger；不呼叫內部 API。",
   "permissions": [
     "clipboardWrite",
     "downloads",
-    "scripting"
+    "scripting",
+    "storage"
   ],
   "host_permissions": [
     "http://127.0.0.1:37841/*",
@@ -27,6 +28,7 @@
     }
   ],
   "action": {
-    "default_title": "履歷契約工作台 · Resume Contract Studio"
+    "default_title": "履歷契約工作台 · Resume Contract Studio",
+    "default_popup": "popup.html"
   }
 }
