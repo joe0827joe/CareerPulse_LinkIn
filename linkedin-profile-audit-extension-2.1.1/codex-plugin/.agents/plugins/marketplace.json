@@ -1,0 +1,16 @@
+{
+  "name": "joe-local-linkedin",
+  "interface": { "displayName": "Joe Local Plugins" },
+  "plugins": [
+    {
+      "name": "linkedin-profile-resume-sync",
+      "source": { "source": "local", "path": "./linkedin-profile-resume-sync" },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL",
+        "products": ["CODEX"]
+      },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "linkedin-profile-resume-sync",
+  "version": "2.8.0",
+  "description": "Use an agent-authored session plan to discover, create, update, and verify LinkedIn resume sections through visible browser forms.",
+  "author": { "name": "Joe" },
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Resume Contract Studio",
+        "shortDescription": "由 Agent 完成 LinkedIn 履歷",
+        "longDescription": "Connects Codex to visible LinkedIn forms. The Agent discovers each form, builds a session plan from requested resume changes, previews visible before/after values, creates or updates only reviewed mapped sections, verifies saved values, and exports local audit snapshots without undocumented LinkedIn APIs.",
+        "developerName": "Joe",
+        "category": "Productivity",
+        "capabilities": ["Read", "Write"],
+        "defaultPrompt": "使用 Resume Contract Studio 探索我的 LinkedIn 可見頁面，依照我提供的履歷內容新增或修改完整履歷，逐項核對後匯出本機紀錄。"
+      }
+    }
+  }
+}

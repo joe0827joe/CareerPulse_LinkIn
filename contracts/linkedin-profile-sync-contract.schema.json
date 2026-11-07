@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.codex/contracts/linkedin-profile-sync-contract.schema.json",
+  "title": "LinkedIn Profile Sync Contract",
+  "description": "A portable, UI-only contract for producing reviewable bilingual LinkedIn update targets. It deliberately excludes credentials, cookies, private APIs, and automatic deletion.",
+  "type": "object",
+  "required": ["schema_version", "artifact_type", "profile", "locales", "shared_content_primary_locale", "shared_content_operation_ids", "operations", "restrictions"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "artifact_type": {"const": "linkedin_profile_sync_contract"},
+    "profile": {
+      "type": "object",
+      "required": ["public_profile_url"],
+      "properties": {"public_profile_url": {"type": "string", "pattern": "^https://www\\.linkedin\\.com/in/[^/]+/?$"}},
+      "additionalProperties": false
+    },
+    "locales": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[a-z]{2,3}([_-][A-Za-z]{2,4})?$"}, "uniqueItems": true},
+    "shared_content_primary_locale": {"type": "string", "pattern": "^[a-z]{2,3}([_-][A-Za-z]{2,4})?$"},
+    "shared_content_operation_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}, "uniqueItems": true},
+    "operations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "locale", "section", "operation", "fields", "evidence", "verification"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+          "locale": {"type": "string", "pattern": "^[a-z]{2,3}([_-][A-Za-z]{2,4})?$"},
+          "section": {"type": "string", "pattern": "^[a-z][a-z_]*$"},
+          "operation": {"enum": ["replace", "create", "manual_review"]},
+          "url": {"type": "string", "pattern": "^https://www\\.linkedin\\.com/in/[^/]+/"},
+          "fields": {"type": "object", "minProperties": 1, "additionalProperties": {"type": ["string", "integer", "boolean", "array"]}},
+          "field_mapping": {"type": "object", "additionalProperties": {"type": "object", "properties": {"labels": {"type": "array", "items": {"type": "string"}}, "selector": {"type": "string"}}, "additionalProperties": false}},
+          "identity": {"type": "object", "required": ["url", "required_text"], "properties": {"url": {"type": "string", "pattern": "^https://www\\.linkedin\\.com/in/[^/]+/"}, "required_text": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}}, "additionalProperties": false},
+          "evidence": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+          "verification": {"type": "object", "required": ["strategy"], "properties": {"strategy": {"enum": ["exact_text", "contains_text", "manual"]}, "expected": {"type": "string"}}},
+          "manual_reason": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "restrictions": {
+      "type": "object",
+      "required": ["visible_ui_only", "direct_network_writes", "automatic_delete"],
+      "properties": {
+        "visible_ui_only": {"const": true},
+        "direct_network_writes": {"const": false},
+        "automatic_delete": {"const": false}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

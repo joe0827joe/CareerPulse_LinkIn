@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "artifact_type": "linkedin_profile_sync_contract",
+  "profile": {"public_profile_url": "https://www.linkedin.com/in/replace-this-slug/"},
+  "locales": ["en_US"],
+  "shared_content_primary_locale": "en_US",
+  "shared_content_operation_ids": ["about"],
+  "operations": [
+    {
+      "id": "about",
+      "locale": "en_US",
+      "section": "about",
+      "operation": "replace",
+      "url": "https://www.linkedin.com/in/replace-this-slug/edit/forms/summary/new/",
+      "fields": {"description": "Replace with approved resume summary."},
+      "field_mapping": {"description": {"labels": ["About", "關於"]}},
+      "evidence": ["User-approved resume source"],
+      "verification": {"strategy": "exact_text", "expected": "Replace with approved resume summary."}
+    },
+    {
+      "id": "new_experience",
+      "locale": "en_US",
+      "section": "experience",
+      "operation": "create",
+      "url": "https://www.linkedin.com/in/replace-this-slug/details/experience/edit/forms/new/",
+      "fields": {
+        "position_title": "Replace with official title",
+        "organization": "Replace with official employer",
+        "description": "Replace with approved achievement-focused description"
+      },
+      "field_mapping": {
+        "position_title": {"labels": ["Title", "職稱"]},
+        "organization": {"labels": ["Company", "Organization", "組織名稱"]},
+        "description": {"labels": ["Description", "說明"]}
+      },
+      "identity": {"url": "https://www.linkedin.com/in/replace-this-slug/details/experience/", "required_text": ["Replace with official title", "Replace with official employer"]},
+      "evidence": ["User-approved resume source"],
+      "verification": {"strategy": "contains_text", "expected": "Replace with approved achievement-focused description"}
+    },
+    {
+      "id": "new_skill",
+      "locale": "en_US",
+      "section": "skills",
+      "operation": "create",
+      "url": "https://www.linkedin.com/in/replace-this-slug/details/skills/edit/forms/new/",
+      "fields": {"skill": "Replace with an approved LinkedIn skill"},
+      "field_mapping": {"skill": {"labels": ["Skill", "技能"]}},
+      "evidence": ["User-approved resume source"],
+      "verification": {"strategy": "contains_text", "expected": "Replace with an approved LinkedIn skill"}
+    },
+    {
+      "id": "new_certification",
+      "locale": "en_US",
+      "section": "certifications",
+      "operation": "create",
+      "url": "https://www.linkedin.com/in/replace-this-slug/details/certifications/edit/forms/new/",
+      "fields": {"certification_name": "Replace with the credential's official name", "issue_year": 2026},
+      "field_mapping": {
+        "certification_name": {"labels": ["Name", "Certification name", "證照名稱"]},
+        "issue_year": {"selector": "select[name*='year']"}
+      },
+      "evidence": ["User-approved credential source"],
+      "verification": {"strategy": "manual"}
+    }
+  ],
+  "restrictions": {"visible_ui_only": true, "direct_network_writes": false, "automatic_delete": false}
+}

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "linkedin-resume-sync": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/server.mjs"],
+      "cwd": "${PLUGIN_ROOT}"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+# User profile and audit data: NEVER commit to the public repository.
+/contracts/linkedin-profile-sync-contract.json
+/linkedin-profile-audit-extension-2.1.1/profile-targets.json
+/pipeline/linkedin_profile_target_*.json
+/snapshots/
+/runs/
+/tmp/
+/legacy/
+/release/
+*.zip
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+node_modules/
+.DS_Store

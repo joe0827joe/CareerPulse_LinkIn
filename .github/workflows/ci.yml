@@ -1,0 +1,32 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Python tests
+        run: python -m unittest discover -s pipeline -p 'test_*.py' -v
+      - name: Node syntax checks
+        run: |
+          node --check linkedin-profile-audit-extension-2.1.1/background.js
+          node --check linkedin-profile-audit-extension-2.1.1/linkedin_profile_audit_v2.user.js
+          node --check linkedin-profile-audit-extension-2.1.1/codex-plugin/linkedin-profile-resume-sync/server.mjs
+      - name: Validate JSON sources
+        run: |
+          python - <<'PY2'
+          import json
+          from pathlib import Path
+          for path in Path('.').rglob('*.json'):
+              if path.is_relative_to('release') or path.is_relative_to('runs'):
+                  continue
+              json.loads(path.read_text(encoding='utf-8'))
+          PY2
