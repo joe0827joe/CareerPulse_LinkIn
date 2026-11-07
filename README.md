@@ -46,7 +46,7 @@ node --check linkedin-profile-audit-extension-2.1.1/linkedin_profile_audit_v2.us
 ## Security / limitations
 
 - No private LinkedIn API calls, auto-login or credential harvesting are intended by this source.
-- The current loopback HTTP bridge does **not authenticate commands** and exposes permissive CORS; run it only in a trusted local environment. Hardening the bridge with per-session authentication is a pre-deployment security task.
+- The loopback bridge now rejects non-extension origins and does **not** set wildcard CORS. Optionally set `LINKEDIN_RESUME_EXTENSION_ID` to allow only your specific Chromium extension ID (find it on `edge://extensions/`). This mitigates browser cross-origin abuse but is **not client authentication**: a local process can forge `Origin`. Only use on a trusted local machine; token pairing/auth remains required for less-trusted deployments.
 - Browser DOM mappings may change; selectors must be validated against the live user-visible form. Browser publishing and end-to-end flows are **not** validated by offline unit tests.
 - The offline diff engine includes some legacy, profile-specific extraction logic. Generalizing and fixture-testing the extractor is a separate technical debt item.
 

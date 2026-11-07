@@ -18,30 +18,79 @@ const results=new Map();
 let lastSeen=null;
 let sequence=0;
 const waiters=new Map();
-const jsonHeaders={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Access-Control-Allow-Origin':'*'};
-
-function sendHttp(res,status,value){res.writeHead(status,jsonHeaders);res.end(value==null?'':JSON.stringify(value));}
-function readBody(req){return new Promise((resolveBody,reject)=>{let body='';req.on('data',c=>{body+=c;if(body.length>2_000_000)reject(new Error('body too large'));});req.on('end',()=>{try{resolveBody(JSON.parse(body||'{}'));}catch(e){reject(e);}});req.on('error',reject);});}
+// Do not grant arbitrary websites access to a privileged browser-automation
+// queue. This is an origin restriction, NOT client authentication: another
+// local process can forge an Origin header. Pairing/auth remains required for
+// untrusted local machines.
+const EXTENSION_ORIGIN=/^chrome-extension:\/\/[a-p]{32}$/;
+const allowedExtensionId=process.env.LINKEDIN_RESUME_EXTENSION_ID || '';
+if (allowedExtensionId && !/^[a-p]{32}$/.test(allowedExtensionId)) {
+  throw new Error('LINKEDIN_RESUME_EXTENSION_ID must be a 32-character Chrome extension ID');
+}
+const jsonHeaders={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'};
+function sendHttp(req,res,status,value,extra={}){
+  const origin=req.headers.origin;
+  const cors=origin && EXTENSION_ORIGIN.test(origin) && (!allowedExtensionId || origin===`chrome-extension://${allowedExtensionId}`)
+    ? {'Access-Control-Allow-Origin':origin,'Vary':'Origin'} : {};
+  res.writeHead(status,{...jsonHeaders,...cors,...extra});
+  res.end(value==null?'':JSON.stringify(value));
+}
+function authorizedExtensionRequest(req){
+  const origin=req.headers.origin || '';
+  const host=req.headers.host || '';
+  const actualPort=bridge.address()?.port;
+  return EXTENSION_ORIGIN.test(origin)
+    && (!allowedExtensionId || origin===`chrome-extension://${allowedExtensionId}`)
+    && (host===`127.0.0.1:${actualPort}`);
+}
+function readBody(req){return new Promise((resolveBody,reject)=>{
+  let body=''; let rejected=false;
+  req.on('data',chunk=>{
+    if(rejected)return;
+    body+=chunk;
+    if(Buffer.byteLength(body)>2_000_000){rejected=true;reject(new Error('body too large'));req.resume();}
+  });
+  req.on('end',()=>{if(rejected)return;try{resolveBody(JSON.parse(body||'{}'));}catch(error){reject(error);}});
+  req.on('error',reject);
+});}
 
 const bridge=http.createServer(async(req,res)=>{
   try {
-    if(req.method==='OPTIONS'){res.writeHead(204,{...jsonHeaders,'Access-Control-Allow-Methods':'GET,POST,OPTIONS','Access-Control-Allow-Headers':'Content-Type'});return res.end();}
-    if(req.method==='GET'&&req.url?.startsWith('/health')) return sendHttp(res,200,{ok:true,lastSeen,queued:queue.length});
-    if(req.method==='GET'&&req.url?.startsWith('/next')){
+    if(!authorizedExtensionRequest(req)) return sendHttp(req,res,403,{error:'extension origin not allowed'});
+    if(req.method==='OPTIONS') return sendHttp(req,res,204,null,{
+      'Access-Control-Allow-Methods':'GET,POST,OPTIONS','Access-Control-Allow-Headers':'Content-Type',
+    });
+    if(req.method==='GET'&&req.url==='/health') return sendHttp(req,res,200,{ok:true,lastSeen,queued:queue.length});
+    if(req.method==='GET'&&req.url==='/next'){
       lastSeen=new Date().toISOString();
-      const command=queue.shift(); if(command) inFlight.add(command.id); return command?sendHttp(res,200,command):sendHttp(res,204,null);
+      const command=queue.shift();
+      if(command)inFlight.add(command.id);
+      return command?sendHttp(req,res,200,command):sendHttp(req,res,204,null);
     }
     if(req.method==='POST'&&req.url==='/result'){
-      const result=await readBody(req);lastSeen=new Date().toISOString();results.set(result.id,result);inFlight.delete(result.id);
-      const pending=waiters.get(result.id);if(pending){pending(result);waiters.delete(result.id);}return sendHttp(res,200,{ok:true});
+      const result=await readBody(req);
+      if(!result || typeof result.id!=='string' || !inFlight.has(result.id) || typeof result.ok!=='boolean'){
+        return sendHttp(req,res,409,{error:'unexpected or invalid command result'});
+      }
+      lastSeen=new Date().toISOString();
+      results.set(result.id,result); inFlight.delete(result.id);
+      const pending=waiters.get(result.id);
+      if(pending){pending(result);waiters.delete(result.id);results.delete(result.id);}
+      return sendHttp(req,res,200,{ok:true});
     }
-    return sendHttp(res,404,{error:'not found'});
-  } catch(error){sendHttp(res,500,{error:String(error)});}
+    return sendHttp(req,res,404,{error:'not found'});
+  } catch(error){return sendHttp(req,res,400,{error:String(error?.message||error)});}
 });
-bridge.listen(bridgePort,'127.0.0.1',()=>console.error(`[linkedin-resume-sync] bridge listening on 127.0.0.1:${bridgePort}`));
+bridge.listen(bridgePort,'127.0.0.1',()=>console.error(`[linkedin-resume-sync] bridge listening on 127.0.0.1:${bridge.address().port}`));
 
 function enqueue(action,args={}){const id=`cmd-${Date.now()}-${++sequence}`;queue.push({id,action,args});return id;}
-function waitResult(id,timeoutMs=15000){if(results.has(id))return Promise.resolve(results.get(id));return new Promise(resolveWait=>{const timer=setTimeout(()=>{waiters.delete(id);resolveWait({id,ok:false,error:'timeout waiting for Edge extension'});},Math.min(Math.max(timeoutMs,100),30000));waiters.set(id,value=>{clearTimeout(timer);resolveWait(value);});});}
+function waitResult(id,timeoutMs=15000){
+  if(results.has(id)){const result=results.get(id);results.delete(id);return Promise.resolve(result);}
+  return new Promise(resolveWait=>{
+    const timer=setTimeout(()=>{waiters.delete(id);resolveWait({id,ok:false,error:'timeout waiting for Edge extension'});},Math.min(Math.max(timeoutMs,100),30000));
+    waiters.set(id,value=>{clearTimeout(timer);resolveWait(value);});
+  });
+}
 const text=value=>({content:[{type:'text',text:typeof value==='string'?value:JSON.stringify(value,null,2)}]});
 
 const COMMAND_CONTRACT_VERSION='1.0';
@@ -157,7 +206,7 @@ rl.on('line',async line=>{
   let message;try{message=JSON.parse(line);}catch{return;}
   if(message.id==null)return;
   try{
-    if(message.method==='initialize')respond(message.id,{protocolVersion:message.params?.protocolVersion||'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'resume-contract-studio',version:'2.7.0'}});
+    if(message.method==='initialize')respond(message.id,{protocolVersion:message.params?.protocolVersion||'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'resume-contract-studio',version:'2.8.0'}});
     else if(message.method==='tools/list')respond(message.id,{tools});
     else if(message.method==='tools/call')respond(message.id,await callTool(message.params?.name,message.params?.arguments||{}));
     else if(message.method==='ping')respond(message.id,{});

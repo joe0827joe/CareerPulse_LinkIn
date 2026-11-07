@@ -343,7 +343,7 @@
       url.searchParams.delete('language');
       location.href=url.toString(); return {status:'navigating',locale:args.locale};
     }
-    if (action==='status') return {status:'ready',url:location.href,locale:localeKey(),version:'4.7.0',targetSource,sharedContentPrimaryLocale,sharedContentOperationIds:[...sharedContentOperationIds],operationIds:OPERATIONS[localeKey()].map(item=>item.id),snapshot:observe()};
+    if (action==='status') return {status:'ready',url:location.href,locale:localeKey(),version:'4.11.0',targetSource,sharedContentPrimaryLocale,sharedContentOperationIds:[...sharedContentOperationIds],operationIds:OPERATIONS[localeKey()].map(item=>item.id),snapshot:observe()};
     if (action==='inspect_page') return inspectPage();
     if (action==='activate_control') return activateControl(args.controlId);
     if (action==='scan') return {status:'scanned',snapshot:observe(),visible_text:pageText(),links:[...document.querySelectorAll('a[href]')].filter(visible).filter(el=>el.href.startsWith(`https://www.linkedin.com/in/${PROFILE}/`)).map(el=>({text:clean(el.innerText),label:el.getAttribute('aria-label'),url:el.href}))};
