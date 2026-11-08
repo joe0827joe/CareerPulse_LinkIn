@@ -1,6 +1,6 @@
 {
   "name": "linkedin-profile-resume-sync",
-  "version": "2.8.0",
+  "version": "2.9.0",
   "description": "Use an agent-authored session plan to discover, create, update, and verify LinkedIn resume sections through visible browser forms.",
   "author": { "name": "Joe" },
   "interface": {

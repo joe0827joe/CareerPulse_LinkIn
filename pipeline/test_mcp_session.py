@@ -267,7 +267,7 @@ class BridgeHttpTests(unittest.TestCase):
         release=(root.parent/'package-release.ps1').read_text(encoding='utf-8')
         self.assertIn("'popup.html'",release)
         self.assertIn("'popup.js'",release)
-        self.assertIn("$ExtensionVersion = '4.12.0'",release)
+        self.assertIn("$ExtensionVersion = '4.13.0'",release)
         popup=manifest['action']['default_popup']
         self.assertTrue((root/popup).is_file())
         self.assertTrue((root/'popup.js').is_file())

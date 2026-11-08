@@ -20,8 +20,8 @@ Python pipeline: offline snapshot -> diff -> review / rollback artifacts
 
 | Directory | Responsibility |
 |---|---|
-| `linkedin-profile-audit-extension-2.1.1/` | Browser extension source (manifest version is 4.12.0; directory name is legacy) |
-| `linkedin-profile-audit-extension-2.1.1/codex-plugin/linkedin-profile-resume-sync/` | MCP stdio service (plugin version 2.8.0) |
+| `linkedin-profile-audit-extension-2.1.1/` | Browser extension source (manifest version is 4.13.0; directory name is legacy) |
+| `linkedin-profile-audit-extension-2.1.1/codex-plugin/linkedin-profile-resume-sync/` | MCP stdio service (plugin version 2.9.0) |
 | `pipeline/` | Offline diff engine, contract generator and tests |
 | `contracts/` | Generic JSON Schema and example contract |
 | `package-release.ps1` | Package the extension and MCP plugin for local installation |
@@ -53,6 +53,17 @@ node --test tests/bridge_readonly_smoke.test.mjs
 ```
 
 It evaluates the actual MV3 background and content scripts with a fixture DOM, exercises the stdio MCP server, loopback HTTP pairing, `status`, `scan`, `inspect_page`, `read_history`, and token rotation, and checks that no profile change history was written. This is a **transport smoke test**, not proof that live LinkedIn DOM selectors or saved profile updates work.
+
+## Read-only live check (manual installation required)
+
+After installing and pairing the Edge extension, log in to LinkedIn yourself, then call `set_resume_plan` using a **canonical** profile URL, a valid `locales` array and `operations: []`. Call `read_only_smoke` once. It runs five checks (history before, status, scan, inspect_page, history after), verifies the page matches the approved profile and returns only metadata (no profile text). A result of PASS verifies **only** the connected read path. Real LinkedIn DOM compatibility and profile saving remain separately unverified until a user-signed-in live test.
+
+No operations are authorized by default. To permit any later write, explicitly select the current operation in the on-page review panel. Changing operation mappings invalidates old selections, even if an operation ID is reused.
+
+Local regression commands:
+```sh
+node --test tests/live_readonly_smoke.test.mjs
+```
 
 ## Security / limitations
 

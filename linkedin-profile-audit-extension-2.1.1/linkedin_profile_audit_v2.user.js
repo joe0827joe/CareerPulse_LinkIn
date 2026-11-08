@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LinkedIn Profile Update, Audit & Logger
 // @namespace    local.profile.patch
-// @version      4.12.0
+// @version      4.13.0
 // @description  Applies the approved local bilingual target through visible LinkedIn forms and exports snapshots and change history. Never calls internal APIs.
 // @match        https://www.linkedin.com/in/*
 // @grant        none
@@ -75,7 +75,12 @@
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { return {}; } }
   function save(data) { localStorage.setItem(KEY, JSON.stringify(data)); }
   const reviewSelection = locale => {
-    const selected=load().review_selection?.[locale];
+    const record=load();
+    // Approval is tied to the exact current operation mapping. If target fields
+    // change, old choices must not authorize new writes under the same ID.
+    const fingerprint=JSON.stringify(OPERATIONS[locale] || []);
+    if(record.review_plan?.[locale] !== fingerprint) return null;
+    const selected=record.review_selection?.[locale];
     return Array.isArray(selected) ? selected : null;
   };
   const saveReviewSelection = (locale, selected) => {
@@ -83,7 +88,7 @@
   };
   const requireSelectedForApply = operationId => {
     const selected=reviewSelection(localeKey());
-    if (selected && !selected.includes(operationId)) throw new Error('此操作尚未納入逐項審核清單；請先由使用者在面板選取');
+    if (!selected || !selected.includes(operationId)) throw new Error('此操作尚未由使用者明確選取；請先在面板勾選');
   };
   const visible = el => !!(el && (el.offsetWidth || el.offsetHeight || el.getClientRects().length));
   const editables = () => [...document.querySelectorAll('input:not([type="hidden"]),textarea,[contenteditable="true"],select')].filter(visible);
@@ -343,7 +348,7 @@
       url.searchParams.delete('language');
       location.href=url.toString(); return {status:'navigating',locale:args.locale};
     }
-    if (action==='status') return {status:'ready',url:location.href,locale:localeKey(),version:'4.12.0',targetSource,sharedContentPrimaryLocale,sharedContentOperationIds:[...sharedContentOperationIds],operationIds:OPERATIONS[localeKey()].map(item=>item.id),snapshot:observe()};
+    if (action==='status') return {status:'ready',url:location.href,locale:localeKey(),version:'4.13.0',targetSource,sharedContentPrimaryLocale,sharedContentOperationIds:[...sharedContentOperationIds],operationIds:OPERATIONS[localeKey()].map(item=>item.id),snapshot:observe()};
     if (action==='inspect_page') return inspectPage();
     if (action==='activate_control') return activateControl(args.controlId);
     if (action==='scan') return {status:'scanned',snapshot:observe(),visible_text:pageText(),links:[...document.querySelectorAll('a[href]')].filter(visible).filter(el=>el.href.startsWith(`https://www.linkedin.com/in/${PROFILE}/`)).map(el=>({text:clean(el.innerText),label:el.getAttribute('aria-label'),url:el.href}))};
@@ -413,7 +418,7 @@
     data.snapshots ||= [];
     data.snapshots.push(snapshot);
     data.snapshots=data.snapshots.slice(-50);
-    data.meta = {schema_version:'4.7', artifact_type:'linkedin_profile_audit_logger', profile_url:`https://www.linkedin.com/in/${PROFILE}/`, locales:contractLocales, updater_version:'4.12.0', shared_content_primary_locale:sharedContentPrimaryLocale, shared_content_operation_ids:[...sharedContentOperationIds]};
+    data.meta = {schema_version:'4.7', artifact_type:'linkedin_profile_audit_logger', profile_url:`https://www.linkedin.com/in/${PROFILE}/`, locales:contractLocales, updater_version:'4.13.0', shared_content_primary_locale:sharedContentPrimaryLocale, shared_content_operation_ids:[...sharedContentOperationIds]};
     save(data); return data;
   }
   async function download(data) {
@@ -433,9 +438,8 @@
     const data=observe(), panel=document.createElement('aside'); panel.id='li-audit-v2';
     panel.style.cssText='position:fixed;right:18px;bottom:18px;z-index:2147483640;width:390px;max-height:80vh;overflow:auto;background:#fff;color:#172b4d;border:1px solid #d8e1ed;border-radius:18px;box-shadow:0 18px 48px #17365a2b;padding:18px;font:13px/1.45 system-ui';
     const locale=localeKey(), operations=OPERATIONS[locale] || [], ledger=load();
-    // A fresh review defaults to every approved operation.  Once the user
-    // changes a checkbox, that explicit local selection becomes authoritative.
-    const selected=new Set(reviewSelection(locale) ?? operations.map(operation=>operation.id));
+    // Approval is opt-in. A new plan starts with no operations selected.
+    const selected=new Set(reviewSelection(locale) ?? []);
     const verified=new Set((ledger.operation_verifications || []).filter(item=>item.verified).map(item=>item.operationId));
     const changed=new Set((ledger.change_history || []).map(item=>item.action?.replace('operation:','')).filter(Boolean));
     const sectionNames={intro:'個人檔案',headline:'個人檔案',about:'關於',experience:'工作經歷',project:'專案',projects:'專案',skill:'技能',skills:'技能',certification:'證照',certifications:'證照'};
@@ -445,18 +449,18 @@
     const addBlock=(title,detail)=>{const block=make('section',null,'margin-top:14px;padding-top:13px;border-top:1px solid #e7edf5');block.append(make('div',title,'font-weight:750;color:#17365a')); if(detail) block.append(make('div',detail,'color:#617286;margin-top:3px')); panel.append(block); return block;};
     const header=make('div',null,'display:flex;align-items:flex-start;justify-content:space-between;gap:10px');
     const brand=make('div',null,'display:flex;gap:10px;align-items:center'); brand.append(make('div','RC','display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:#0a66c2;color:#fff;font-weight:800'));
-    const title=make('div'); title.append(make('div','履歷同步中心','font-size:16px;font-weight:800;letter-spacing:-.2px')); title.append(make('div','已連線 · 僅會修改已核准欄位','color:#54708b;font-size:12px;margin-top:1px')); brand.append(title); header.append(brand); header.append(make('div','安全模式','padding:4px 7px;border-radius:999px;background:#e9f7ef;color:#147a46;font-size:11px;font-weight:700')); panel.append(header);
+    const title=make('div'); title.append(make('div','履歷同步中心','font-size:16px;font-weight:800;letter-spacing:-.2px')); title.append(make('div','已連線 · 只有明確勾選的項目才允許套用','color:#54708b;font-size:12px;margin-top:1px')); brand.append(title); header.append(brand); header.append(make('div','安全模式','padding:4px 7px;border-radius:999px;background:#e9f7ef;color:#147a46;font-size:11px;font-weight:700')); panel.append(header);
     const language=make('div',null,'display:flex;gap:6px;margin-top:15px');
     const displayLocales=[...contractLocales].sort((a,b)=>(a==='zh_TW'?-1:b==='zh_TW'?1:a.localeCompare(b)));
     for (const contractLocale of displayLocales) { const active=contractLocale===locale; language.append(button(contractLocale==='zh_TW'?'中文':'English',()=>{location.href=`${URLS.overview}?locale=${encodeURIComponent(contractLocale.replace('_','-'))}`;},active)); }
     panel.append(language);
-    const status=addBlock('目前進度',`${operations.length} 個已核准變更 · ${verified.size} 個已驗證`);
+    const status=addBlock('目前進度',`${operations.length} 個待審核操作 · ${verified.size} 個已驗證`);
     const steps=make('div',null,'display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:9px');
     [['盤點','完成'],['對應','完成'],['套用',changed.size?'進行中':'待執行'],['驗證',verified.size?'已驗證':'待驗證']].forEach(([label,state],index)=>{const card=make('div',null,`padding:7px;border-radius:9px;background:${index<2?'#edf6ff':'#f6f8fa'};text-align:center`);card.append(make('div',String(index+1),'font-weight:800;color:#0a66c2'));card.append(make('div',label,'font-size:11px;font-weight:700'));card.append(make('div',state,'font-size:10px;color:#617286'));steps.append(card);}); status.append(steps);
     const review=addBlock('逐項審核',`${selected.size}/${operations.length} 個操作已納入本次套用；未選取的操作會被 MCP 阻擋。`);
     review.append(button('全選',()=>{saveReviewSelection(locale,operations.map(operation=>operation.id));render();})); review.append(button('清除選取',()=>{saveReviewSelection(locale,[]);render();}));
     const changes=addBlock('待處理與已驗證的資料',operations.length?'點選項目可開啟相對應的 LinkedIn 表單；儲存一律由 Codex 透過契約執行。':'此語言尚無可執行變更。請先請 Codex 掃描並建立映射。');
-    for (const operation of operations) { const card=make('article',null,'margin-top:8px;padding:10px;border:1px solid #dce6f0;border-radius:11px;background:#fbfdff'); const row=make('div',null,'display:flex;align-items:center;justify-content:space-between;gap:8px'); const label=sectionNames[operation.section] || operation.section; row.append(make('div',`${label} · ${operation.operation==='create'?'新增':'更新'}`,'font-weight:750')); const state=verified.has(operation.id)?'已驗證':changed.has(operation.id)?'已套用':'待處理'; row.append(make('div',state,`font-size:11px;font-weight:700;color:${verified.has(operation.id)?'#147a46':changed.has(operation.id)?'#a65d00':'#54708b'}`)); card.append(row); const choice=make('label',null,'display:flex;gap:6px;align-items:center;margin-top:7px;color:#264e77;font-size:12px;cursor:pointer'); const checkbox=document.createElement('input'); checkbox.type='checkbox'; checkbox.checked=selected.has(operation.id); checkbox.onchange=()=>{const next=new Set(reviewSelection(locale) ?? operations.map(item=>item.id)); checkbox.checked?next.add(operation.id):next.delete(operation.id); saveReviewSelection(locale,[...next]);render();}; choice.append(checkbox,make('span','納入本次套用')); card.append(choice); card.append(make('div',`${Object.keys(operation.fields || {}).length} 個欄位已映射`,'color:#617286;font-size:12px;margin-top:2px')); const preview=make('details',null,'margin-top:7px'); preview.append(make('summary','預覽預計寫入的內容','cursor:pointer;color:#264e77;font-size:12px;font-weight:650')); for (const [field,value] of Object.entries(operation.fields || {})) { const valueText=String(Array.isArray(value)?value.join('、'):value); const clipped=valueText.length>180?`${valueText.slice(0,180)}…`:valueText; preview.append(make('div',`${fieldNames[field] || field}：${clipped}`,'margin-top:5px;color:#40566d;font-size:12px;white-space:pre-wrap')); } preview.append(make('div','實際變更前內容由 Codex 的唯讀預覽命令在開啟表單後比對。','margin-top:7px;color:#617286;font-size:11px')); card.append(preview); const actions=make('div',null,'margin-top:8px'); actions.append(button('查看表單',()=>{location.href=operation.url;})); card.append(actions); changes.append(card); }
+    for (const operation of operations) { const card=make('article',null,'margin-top:8px;padding:10px;border:1px solid #dce6f0;border-radius:11px;background:#fbfdff'); const row=make('div',null,'display:flex;align-items:center;justify-content:space-between;gap:8px'); const label=sectionNames[operation.section] || operation.section; row.append(make('div',`${label} · ${operation.operation==='create'?'新增':'更新'}`,'font-weight:750')); const state=verified.has(operation.id)?'已驗證':changed.has(operation.id)?'已套用':'待處理'; row.append(make('div',state,`font-size:11px;font-weight:700;color:${verified.has(operation.id)?'#147a46':changed.has(operation.id)?'#a65d00':'#54708b'}`)); card.append(row); const choice=make('label',null,'display:flex;gap:6px;align-items:center;margin-top:7px;color:#264e77;font-size:12px;cursor:pointer'); const checkbox=document.createElement('input'); checkbox.type='checkbox'; checkbox.checked=selected.has(operation.id); checkbox.onchange=()=>{const next=new Set(reviewSelection(locale) ?? []); checkbox.checked?next.add(operation.id):next.delete(operation.id); saveReviewSelection(locale,[...next]);render();}; choice.append(checkbox,make('span','納入本次套用')); card.append(choice); card.append(make('div',`${Object.keys(operation.fields || {}).length} 個欄位已映射`,'color:#617286;font-size:12px;margin-top:2px')); const preview=make('details',null,'margin-top:7px'); preview.append(make('summary','預覽預計寫入的內容','cursor:pointer;color:#264e77;font-size:12px;font-weight:650')); for (const [field,value] of Object.entries(operation.fields || {})) { const valueText=String(Array.isArray(value)?value.join('、'):value); const clipped=valueText.length>180?`${valueText.slice(0,180)}…`:valueText; preview.append(make('div',`${fieldNames[field] || field}：${clipped}`,'margin-top:5px;color:#40566d;font-size:12px;white-space:pre-wrap')); } preview.append(make('div','實際變更前內容由 Codex 的唯讀預覽命令在開啟表單後比對。','margin-top:7px;color:#617286;font-size:11px')); card.append(preview); const actions=make('div',null,'margin-top:8px'); actions.append(button('查看表單',()=>{location.href=operation.url;})); card.append(actions); changes.append(card); }
     const quick=addBlock('快速導覽','檢視目前履歷資料；不會直接寫入 LinkedIn。'); [['個人檔案',URLS.overview],['工作經歷',URLS.experience],['專案',URLS.projects],['技能',URLS.skills]].forEach(([label,url])=>quick.append(button(label,()=>{location.href=localized(url);}))); quick.append(button('重新掃描',render,true));
     const handoff=addBlock('下一步',selected.size?`已選取 ${selected.size} 項。交給 Codex 預覽差異後，只需再確認一次才會儲存。`:'請至少選取一項後再交給 Codex。');
     const handoffStatus=make('div','', 'margin-top:7px;color:#147a46;font-size:12px;font-weight:650');

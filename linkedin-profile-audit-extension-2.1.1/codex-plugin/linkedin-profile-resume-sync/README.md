@@ -15,3 +15,8 @@ The MCP server listens only on `127.0.0.1:37841`. To enable polling, call `begin
 ## Failure behavior
 
 The tools return a timeout if the extension is not loaded or no matching LinkedIn tab is open. Login, CAPTCHA, verification, ambiguous form mappings, and complex unsupported widgets require user attention. A legacy workspace contract remains optional for existing users.
+
+
+## Read-only smoke acceptance
+
+With a paired browser and an empty-operations plan, run `read_only_smoke`. It checks read-only message transport and the selected profile, and compares ledger counts before and after; it does not issue any LinkedIn save command or return raw page text. It does not prove write selectors or saved changes. Write operations require an explicit fresh selection in the extension review panel.

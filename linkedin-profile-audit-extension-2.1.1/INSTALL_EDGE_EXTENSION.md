@@ -35,3 +35,10 @@ Codex Plugin 原始碼位於 `codex-plugin/linkedin-profile-resume-sync/`。安�
 ## Playwright 驗證順序
 
 安裝後先確認面板出現。更新由外掛與 MCP 橋接執行，不需要 Computer Use。必要時 Playwright 只用於讀取已發布頁面與建立驗證 snapshot，不用於填寫或提交表單。
+
+
+## v4.13 唯讀驗收與逐項核准
+
+登入自己的 LinkedIn、完成配對、設定 `set_resume_plan`（`operations: []`）後，使用 MCP 的 `read_only_smoke` 檢查連線與頁面資料是否可讀。此命令不會向 LinkedIn 寫入履歷。
+
+真正修改時，核准清單預設為空；請在畫面逐項勾選，確認對應欄位後才執行套用。契約內容改變時，舊核准自動失效。

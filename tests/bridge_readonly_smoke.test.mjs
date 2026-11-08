@@ -202,7 +202,7 @@ test('offline read-only full transport and pairing, without profile modification
       const completed=await client.tool('wait_result',{commandId:sent.commandId,timeoutMs:5000});
       assert.equal(completed.ok,true,JSON.stringify(completed));
       assert.equal(completed.id,sent.commandId);
-      if(action==='status') assert.equal(completed.result.version,'4.12.0');
+      if(action==='status') assert.equal(completed.result.version,'4.13.0');
       if(action==='scan'){
         assert.equal(completed.result.status,'scanned');
         assert.ok(completed.result.links.some(x=>x.text==='Experience'));

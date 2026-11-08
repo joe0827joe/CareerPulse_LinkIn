@@ -21,6 +21,12 @@ The extension currently uses the default fixed bridge port `37841`; do not overr
 
 For a new user: log in manually, open the LinkedIn profile, call `set_resume_plan` with a canonical profile URL and no operations, inspect the visible page/form, provide the user-approved operations with validated field mappings, and use the review/save/verify tools. A successful form fill is not proof of a saved profile entry.
 
+### 一鍵唯讀實機驗收
+
+先在 Edge 登入自己的 LinkedIn、安裝 Extension 並完成 `begin_bridge_pairing` 配對，再以 `set_resume_plan` 設定自己的 `profile.public_profile_url`、`locales`、`operations: []`，最後呼叫 `read_only_smoke`。
+
+PASS 只代表 MCP → Bridge → Extension → 網頁內容讀取鏈路驗證成功，不代表資料已儲存；FAIL 會傳回步驟與原因。這個命令完全不包含 `apply_operation`、`apply_and_save_operation` 或其他寫入動作。正式修改時，面板核准預設為零，必須依新版契約逐項勾選。
+
 ### Read-only smoke verification
 
 Run `node --test tests/bridge_readonly_smoke.test.mjs` from the repository root. This synthetic test does **not** use your LinkedIn login or change any profile. For live verification, manually sign in and pair the extension, set a plan with `operations: []`, then use only `status`, `scan`, `inspect_page`, or `read_history` through `send_command` / `wait_result`. Do **not** use `apply_operation` or `apply_and_save_operation` during a read-only smoke test. A green CI cannot verify live LinkedIn selectors.

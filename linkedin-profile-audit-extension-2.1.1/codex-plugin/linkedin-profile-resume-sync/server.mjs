@@ -11,6 +11,7 @@ const root=dirname(fileURLToPath(import.meta.url));
 // local developer; normal callers configure an explicit workspace first.
 let workspace=process.env.LINKEDIN_RESUME_WORKSPACE || null;
 let sessionContract=null;
+let readOnlySmokeActive=false;
 const bridgePort=Number(process.env.LINKEDIN_RESUME_PORT || 37841);
 const queue=[];
 const inFlight=new Set();
@@ -216,11 +217,62 @@ const tools=[
   {name:'contract_status',description:'Validate the local versioned data contract, generated extension targets, and UI-only restrictions before maintenance or a profile update.',inputSchema:{type:'object',properties:{},additionalProperties:false}},
   {name:'read_contract',description:'Read the complete portable LinkedIn resume-sync contract. Use this for generic operation IDs, create/replace plans, URLs, fields, evidence, and mappings.',inputSchema:{type:'object',properties:{},additionalProperties:false}},
   {name:'read_extension_targets',description:'Read the generated portable extension contract for every locale declared by the selected resume workspace.',inputSchema:{type:'object',properties:{},additionalProperties:false}},
+  {name:'read_only_smoke',description:'Run a bounded, strictly read-only live extension check: history baseline, status, scan, inspect_page, history comparison. Requires a paired extension and an empty-operations session plan. Returns only test metadata, not profile content. Never edits or saves the LinkedIn profile.',inputSchema:{type:'object',properties:{timeoutMs:{type:'integer',minimum:1000,maximum:30000,description:'Timeout per check; defaults to 15000 ms.'}},additionalProperties:false}},
   {name:'send_command',description:'Send a UI-only command to the companion extension. For create operations use check_operation_identity first; a create is blocked unless the visible identity check confirmed absence. Use preview_operation to compare the visible form with the approved target without saving. Then open_operation, inspect_current_form, apply_and_save_operation, and verify_operation. read_history and export_logger are read-only.',inputSchema:{type:'object',required:['action'],properties:{action:{type:'string',enum:['status','scan','inspect_page','activate_control','navigate','inspect_current_form','check_operation_identity','preview_operation','verify_operation','export_logger','read_history','open_operation','apply_operation','apply_and_save_operation']},locale:{type:'string'},section:{type:'string'},controlId:{type:'string',description:'Opaque control ID returned by inspect_page'},url:{type:'string',description:'Observed visible profile link for discovery navigation'},operationId:{type:'string',pattern:'^[a-z][a-z0-9_]*$'}},additionalProperties:false}},
   {name:'wait_result',description:'Wait for the Edge extension result for a previously sent command.',inputSchema:{type:'object',required:['commandId'],properties:{commandId:{type:'string'},timeoutMs:{type:'integer',minimum:100,maximum:30000}},additionalProperties:false}}
 ];
 
+async function runReadOnlySmoke(args={}) {
+  if(readOnlySmokeActive)throw new Error('Read-only smoke already running');
+  if(!sessionContract)throw new Error('Set a session plan with operations: [] before running read_only_smoke');
+  if(sessionContract.operations.length!==0)throw new Error('Read-only smoke requires an empty-operations session plan');
+  if(!pairedExtension)throw new Error('Pair the browser extension before running read_only_smoke');
+  if(queue.length||inFlight.size||waiters.size)throw new Error('Finish all pending commands first');
+  const timeoutMs=Number.isInteger(args.timeoutMs) && args.timeoutMs>=1000 && args.timeoutMs<=30000 ? args.timeoutMs : 15000;
+  const target=expectedExtensionTargets(sessionContract);
+  const expected=new URL(sessionContract.profile.public_profile_url);
+  const checks=[];
+  let baseline=null;
+  readOnlySmokeActive=true;
+  try {
+    for(const action of ['read_history','status','scan','inspect_page','read_history']) {
+      const id=enqueue(action,{contractTargets:target});
+      const reply=await waitResult(id,timeoutMs);
+      // In case of timeout a queued read-only command must not execute later.
+      const queuedIndex=queue.findIndex(item=>item.id===id);
+      if(queuedIndex!==-1)queue.splice(queuedIndex,1);
+      inFlight.delete(id);
+      results.delete(id);
+      if(!reply?.ok||!reply.result||typeof reply.result!=='object') {
+        throw new Error(`${action}: ${reply?.error || 'invalid extension result'}`);
+      }
+      const value=reply.result;
+      if(action==='read_history') {
+        if(value.status!=='ok' || value.profile!==sessionContract.profile.public_profile_url || !Array.isArray(value.change_history) || !Array.isArray(value.form_inspections) || !Array.isArray(value.operation_verifications)) throw new Error('Invalid read_history result');
+        const counts=[value.change_history.length,value.form_inspections.length,value.operation_verifications.length];
+        if(!baseline)baseline=counts;
+        else if(counts.some((count,index)=>count!==baseline[index])) throw new Error('Unexpected audit history change during read-only smoke');
+        checks.push({action,passed:true,changeHistoryCount:counts[0]});
+      }else{
+        const observedUrl=action==='scan' ? value.snapshot?.source_url : value.url;
+        let parsed;
+        try {parsed=new URL(observedUrl);} catch {throw new Error(`${action}: invalid profile URL`);}
+        if(parsed.origin!==expected.origin||parsed.pathname!==expected.pathname) throw new Error(`${action}: result is not from selected profile`);
+        if(action==='status' && value.status!=='ready') throw new Error('status: not ready');
+        if(action==='scan' && (value.status!=='scanned'||typeof value.visible_text!=='string'||!Array.isArray(value.links))) throw new Error('scan: unexpected payload');
+        if(action==='inspect_page' && (!Array.isArray(value.controls)||!Array.isArray(value.fields))) throw new Error('inspect_page: unexpected payload');
+        checks.push({action,passed:true,...(action==='inspect_page'?{visibleControls:value.controls.length,visibleFields:value.fields.length}:{})});
+      }
+    }
+    return {result:'PASS',scope:'connected_browser_read_only',writeCommandsSent:0,profileMatched:true,checks,notice:'No LinkedIn save operation was requested. Live DOM compatibility for writing remains unverified.'};
+  }catch(error){
+    return {result:'FAIL',scope:'connected_browser_read_only',reason:String(error?.message||error),checks,notice:'The smoke test did not establish live read-only success.'};
+  }finally{readOnlySmokeActive=false;}
+}
+
 async function callTool(name,args={}){
+  if(readOnlySmokeActive && ['set_resume_plan','begin_bridge_pairing','send_command','read_only_smoke'].includes(name)) throw new Error('Read-only smoke running; finish it before changing session or issuing commands');
+  if(name==='read_only_smoke')return text(await runReadOnlySmoke(args));
   if(name==='set_resume_plan') { if(queue.length || inFlight.size || waiters.size) throw new Error('Finish pending commands before replacing the plan'); sessionContract=validateSessionContract(args.contract); return text({accepted:true,operations:sessionContract.operations.length,profile_url:sessionContract.profile.public_profile_url}); }
   if(name==='begin_bridge_pairing'){
     const pending=new Set([...queue.map(item=>item.id),...inFlight,...waiters.keys()]);
@@ -260,7 +312,7 @@ rl.on('line',async line=>{
   let message;try{message=JSON.parse(line);}catch{return;}
   if(message.id==null)return;
   try{
-    if(message.method==='initialize')respond(message.id,{protocolVersion:message.params?.protocolVersion||'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'resume-contract-studio',version:'2.8.0'}});
+    if(message.method==='initialize')respond(message.id,{protocolVersion:message.params?.protocolVersion||'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'resume-contract-studio',version:'2.9.0'}});
     else if(message.method==='tools/list')respond(message.id,{tools});
     else if(message.method==='tools/call')respond(message.id,await callTool(message.params?.name,message.params?.arguments||{}));
     else if(message.method==='ping')respond(message.id,{});

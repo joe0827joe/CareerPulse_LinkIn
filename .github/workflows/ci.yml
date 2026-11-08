@@ -23,6 +23,8 @@ jobs:
           node --check linkedin-profile-audit-extension-2.1.1/codex-plugin/linkedin-profile-resume-sync/server.mjs
       - name: Synthetic browser smoke (read-only, no LinkedIn network)
         run: node --test tests/bridge_readonly_smoke.test.mjs
+      - name: Live-readiness tool tests (simulated extension)
+        run: node --test tests/live_readonly_smoke.test.mjs
       - name: Validate JSON sources
         run: |
           python - <<'PY2'
