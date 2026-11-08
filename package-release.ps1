@@ -18,7 +18,7 @@ New-Item -ItemType Directory -Path (Join-Path $packageRoot 'browser-extension') 
 New-Item -ItemType Directory -Path (Join-Path $packageRoot 'mcp-plugin\skills\linkedin-resume-sync') -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $packageRoot 'mcp-plugin\.codex-plugin') -Force | Out-Null
 
-$extensionFiles = @('manifest.json', 'background.js', 'linkedin_profile_audit_v2.user.js', 'INSTALL_EDGE_EXTENSION.md')
+$extensionFiles = @('manifest.json', 'background.js', 'popup.html', 'popup.js', 'linkedin_profile_audit_v2.user.js', 'INSTALL_EDGE_EXTENSION.md')
 foreach ($file in $extensionFiles) {
   Copy-Item -LiteralPath (Join-Path $sourceExtension $file) -Destination (Join-Path $packageRoot "browser-extension\$file")
 }
@@ -39,7 +39,8 @@ Copy-Item -LiteralPath (Join-Path $sourcePlugin 'skills\linkedin-resume-sync\SKI
 
 1. 在 Edge 開啟 `edge://extensions/`，啟用開發人員模式，載入 `browser-extension/`。
 2. 在 Codex 安裝或連接 `mcp-plugin/`。
-3. 登入 LinkedIn，開啟個人檔案頁後再使用 MCP。
+3. 從 MCP Client 呼叫 `begin_bridge_pairing`，將代碼貼入擴充功能 Popup 完成 Bridge 配對。
+4. 登入 LinkedIn，開啟個人檔案頁後再使用 MCP。
 
 ## 版本
 
