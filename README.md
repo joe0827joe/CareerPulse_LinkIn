@@ -46,6 +46,14 @@ node --check linkedin-profile-audit-extension-2.1.1/popup.js
 node --check linkedin-profile-audit-extension-2.1.1/linkedin_profile_audit_v2.user.js
 ```
 
+The CI also runs a synthetic browser-flow test (no LinkedIn login or website access):
+
+```sh
+node --test tests/bridge_readonly_smoke.test.mjs
+```
+
+It evaluates the actual MV3 background and content scripts with a fixture DOM, exercises the stdio MCP server, loopback HTTP pairing, `status`, `scan`, `inspect_page`, `read_history`, and token rotation, and checks that no profile change history was written. This is a **transport smoke test**, not proof that live LinkedIn DOM selectors or saved profile updates work.
+
 ## Security / limitations
 
 - No private LinkedIn API calls, auto-login or credential harvesting are intended by this source.

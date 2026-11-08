@@ -21,6 +21,10 @@ The extension currently uses the default fixed bridge port `37841`; do not overr
 
 For a new user: log in manually, open the LinkedIn profile, call `set_resume_plan` with a canonical profile URL and no operations, inspect the visible page/form, provide the user-approved operations with validated field mappings, and use the review/save/verify tools. A successful form fill is not proof of a saved profile entry.
 
+### Read-only smoke verification
+
+Run `node --test tests/bridge_readonly_smoke.test.mjs` from the repository root. This synthetic test does **not** use your LinkedIn login or change any profile. For live verification, manually sign in and pair the extension, set a plan with `operations: []`, then use only `status`, `scan`, `inspect_page`, or `read_history` through `send_command` / `wait_result`. Do **not** use `apply_operation` or `apply_and_save_operation` during a read-only smoke test. A green CI cannot verify live LinkedIn selectors.
+
 ### Offline pipeline
 
 ```sh
